@@ -61,10 +61,13 @@ func getNameservers(host string) (nameservers []string, exists bool, err error) 
 }
 
 func getHeaders(url *url.URL) (string, []string, error) {
-	resp, err := http.Head(url.String())
+	// Use GET instead of HEAD to maximise compatibility
+	resp, err := http.Get(url.String())
 	if err != nil {
 		return "", nil, err
 	}
+	// Discard body
+	resp.Body.Close()
 
 	headers := make([]string, 0, len(resp.Header))
 	for header := range resp.Header {
