@@ -9,6 +9,7 @@ import (
 
 type Digest struct {
 	Registered  bool
+	Hosted      bool
 	Nameservers []string
 	Status      string
 	Headers     []string
@@ -18,12 +19,12 @@ func Fingerprint(url *url.URL) (Digest, error) {
 	d := Digest{}
 
 	var err error
-	d.Nameservers, d.Registered, err = getNameservers(url.Hostname())
+	d.Nameservers, d.Registered, d.Hosted, err = getNameservers(url.Hostname())
 	if err != nil {
 		return d, err
 	}
 
-	if !d.Registered {
+	if !d.Registered || !d.Hosted {
 		return d, nil
 	}
 
@@ -35,7 +36,7 @@ func Fingerprint(url *url.URL) (Digest, error) {
 	return d, nil
 }
 
-func getNameservers(host string) (nameservers []string, exists bool, err error) {
+func getNameservers(host string) (nameservers []string, registered bool, hosted bool, err error) {
 	_, ipErr := net.LookupIP(host)
 	ns, nsErr := net.LookupNS(host)
 	if ipErr != nil && nsErr != nil {
@@ -43,9 +44,9 @@ func getNameservers(host string) (nameservers []string, exists bool, err error) 
 		ipDNSErr, ipDNSOk := ipErr.(*net.DNSError)
 		nsDNSErr, nsDNSOk := nsErr.(*net.DNSError)
 		if ipDNSOk && ipDNSErr.IsNotFound || nsDNSOk && nsDNSErr.IsNotFound {
-			return nil, false, nil
+			return nil, false, false, nil
 		}
-		return nil, false, nsDNSErr
+		return nil, false, false, nsDNSErr
 	}
 
 	// If either succeeded, we know the domain exists even if the nameserver lookup failed
@@ -57,7 +58,7 @@ func getNameservers(host string) (nameservers []string, exists bool, err error) 
 		return nameservers[i] < nameservers[j]
 	})
 
-	return nameservers, true, nil
+	return nameservers, true, ipErr == nil, nil
 }
 
 func getHeaders(url *url.URL) (string, []string, error) {
