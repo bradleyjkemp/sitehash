@@ -20,7 +20,7 @@ func Fingerprint(url *url.URL) (Digest, error) {
 	var err error
 	d.Nameservers, d.Registered, err = getNameservers(url.Hostname())
 	if err != nil {
-		return Digest{}, err
+		return d, err
 	}
 
 	if !d.Registered {
@@ -29,21 +29,26 @@ func Fingerprint(url *url.URL) (Digest, error) {
 
 	d.Status, d.Headers, err = getHeaders(url)
 	if err != nil {
-		return Digest{}, err
+		return d, err
 	}
 
 	return d, nil
 }
 
 func getNameservers(host string) (nameservers []string, exists bool, err error) {
-	ns, err := net.LookupNS(host)
-	if err, ok := err.(*net.DNSError); ok && err.IsNotFound {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
+	_, ipErr := net.LookupIP(host)
+	ns, nsErr := net.LookupNS(host)
+	if ipErr != nil && nsErr != nil {
+		// both lookups failed so this is likely legitimately not registered
+		ipDNSErr, ipDNSOk := ipErr.(*net.DNSError)
+		nsDNSErr, nsDNSOk := nsErr.(*net.DNSError)
+		if ipDNSOk && ipDNSErr.IsNotFound || nsDNSOk && nsDNSErr.IsNotFound {
+			return nil, false, nil
+		}
+		return nil, false, nsDNSErr
 	}
 
+	// If either succeeded, we know the domain exists even if the nameserver lookup failed
 	nameservers = make([]string, 0, len(ns))
 	for _, s := range ns {
 		nameservers = append(nameservers, s.Host)
