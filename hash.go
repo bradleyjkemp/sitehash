@@ -1,10 +1,7 @@
 package sitehash
 
 import (
-	"net"
-	"net/http"
 	"net/url"
-	"sort"
 )
 
 type Digest struct {
@@ -15,68 +12,34 @@ type Digest struct {
 	Headers     []string
 }
 
-func Fingerprint(url *url.URL) (Digest, error) {
-	d := Digest{}
-
-	var err error
-	d.Nameservers, d.Registered, d.Hosted, err = getNameservers(url.Hostname())
+func Fingerprint(url *url.URL) (d Digest, err error) {
+	d.Registered, err = isDomainRegistered(url.Hostname())
 	if err != nil {
 		return d, err
 	}
 
-	if !d.Registered || !d.Hosted {
+	if !d.Registered {
+		// Domain isn't registered so nothing more we can do
 		return d, nil
 	}
 
-	d.Status, d.Headers, err = getHeaders(url)
+	d.Nameservers, err = getNameservers(url.Hostname())
 	if err != nil {
 		return d, err
 	}
 
-	return d, nil
-}
-
-func getNameservers(host string) (nameservers []string, registered bool, hosted bool, err error) {
-	_, ipErr := net.LookupIP(host)
-	ns, nsErr := net.LookupNS(host)
-	if ipErr != nil && nsErr != nil {
-		// both lookups failed so this is likely legitimately not registered
-		ipDNSErr, ipDNSOk := ipErr.(*net.DNSError)
-		nsDNSErr, nsDNSOk := nsErr.(*net.DNSError)
-		if ipDNSOk && ipDNSErr.IsNotFound || nsDNSOk && nsDNSErr.IsNotFound {
-			return nil, false, false, nil
-		}
-		return nil, false, false, nsDNSErr
-	}
-
-	// If either succeeded, we know the domain exists even if the nameserver lookup failed
-	nameservers = make([]string, 0, len(ns))
-	for _, s := range ns {
-		nameservers = append(nameservers, s.Host)
-	}
-	sort.Slice(nameservers, func(i, j int) bool {
-		return nameservers[i] < nameservers[j]
-	})
-
-	return nameservers, true, ipErr == nil, nil
-}
-
-func getHeaders(url *url.URL) (string, []string, error) {
-	// Use GET instead of HEAD to maximise compatibility
-	resp, err := http.Get(url.String())
+	d.Hosted, err = isDomainHosted(url.Hostname())
 	if err != nil {
-		return "", nil, err
+		return d, err
 	}
-	// Discard body
-	resp.Body.Close()
 
-	headers := make([]string, 0, len(resp.Header))
-	for header := range resp.Header {
-		headers = append(headers, header)
+	if d.Hosted {
+		// Domain is hosted somewhere so try to fetch the given URL
+		d.Status, d.Headers, err = getHeaders(url)
+		if err != nil {
+			return d, err
+		}
 	}
-	sort.Slice(headers, func(i, j int) bool {
-		return headers[i] < headers[j]
-	})
 
-	return resp.Status, headers, nil
+	return d, nil
 }
