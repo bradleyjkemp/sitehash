@@ -4,11 +4,16 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"time"
 )
+
+var client = http.Client{
+	Timeout: 10 * time.Second,
+}
 
 func getHeaders(url *url.URL) (string, []string, error) {
 	// Use GET instead of HEAD to maximise compatibility
-	resp, err := http.Get(url.String())
+	resp, err := client.Get(url.String())
 	if err != nil {
 		return "", nil, err
 	}
